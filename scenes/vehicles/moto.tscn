@@ -1,0 +1,149 @@
+[gd_scene load_steps=10 format=3]
+
+; 摩托：四辆车里最轻的一辆（77，越野车 174）。
+;
+; 手感是「轻巧但爱翻」，两个旋钮一起作用：
+;   - 轮距 96（越野车 110）。前后轮离得近，重心稍微一过就翻过去了 —— 这是
+;     「最容易翻」的主要来源，**不是**推重比。
+;   - 转动惯量倍率 1.6（越野车 2.0）。轮子更轻，碾过鼓包时被顶起来得多，
+;     车也更容易被地形甩起来。
+;
+; 推重比压在翘头线（1.45）以下一档，而不是顶到线上：线以上是「翻车」而不是
+; 「灵活」，一踩油门就翻的车不好玩。力矩**没有**被 max_torque 限幅（需求
+; 990000 < 上限 1050000），所以卡片上写的 1.31 就是起步时真拿得到的推力
+; —— 四辆车里只有摩托和赛车是这样，另外两辆（含默认的越野车）都被限幅。
+
+[ext_resource type="Script" path="res://scripts/car.gd" id="1_car"]
+[ext_resource type="Script" path="res://scripts/wheel_visual.gd" id="2_wheel"]
+[ext_resource type="Script" path="res://scripts/driver_visual.gd" id="3_driver"]
+[ext_resource type="Script" path="res://scripts/effects.gd" id="4_effects"]
+
+[sub_resource type="PhysicsMaterial" id="PM_body"]
+friction = 0.7
+bounce = 0.05
+
+[sub_resource type="PhysicsMaterial" id="PM_wheel"]
+friction = 2.6
+rough = true
+bounce = 0.1
+
+; 车架底面：(-56,6) → (54,6)，长 110 px（越野车 168，上限也是 168）。
+; 底面越长越容易横架在坑口上，短是好事。
+[sub_resource type="ConvexPolygonShape2D" id="CS_body"]
+points = PackedVector2Array(-56, 6, -56, -6, -28, -16, 28, -16, 52, -6, 54, 6)
+
+[sub_resource type="CircleShape2D" id="CS_wheel"]
+radius = 20.0
+
+[sub_resource type="CircleShape2D" id="CS_head"]
+radius = 15.0
+
+[node name="Moto" type="Node2D"]
+script = ExtResource("1_car")
+max_wheel_speed = 45.0
+motor_strength = 22000.0
+max_torque = 1050000.0
+inertia_scale = 1.6
+fuel_max = 70.0
+fuel_idle_drain = 1.5
+fuel_throttle_drain = 4.2
+
+; 排在 Chassis 前面：同级节点按顺序画，它要画在车体之下；top_level 让粒子
+; 活在世界坐标里。（和 car.tscn 同一个理由，见那边更长的注释。）
+[node name="Effects" type="Node2D" parent="."]
+top_level = true
+script = ExtResource("4_effects")
+
+[node name="Chassis" type="RigidBody2D" parent="."]
+collision_layer = 1
+collision_mask = 3
+mass = 55.0
+physics_material_override = SubResource("PM_body")
+continuous_cd = 2
+can_sleep = false
+
+[node name="Body" type="CollisionShape2D" parent="Chassis"]
+shape = SubResource("CS_body")
+
+; 车架。碰撞形状和它逐点一致 —— 画的和撞的是同一个形状，不会「看着没碰到却弹开」。
+[node name="BodyVisual" type="Polygon2D" parent="Chassis"]
+color = Color(0.24, 0.26, 0.32, 1)
+polygon = PackedVector2Array(-56, 6, -56, -6, -28, -16, 28, -16, 52, -6, 54, 6)
+
+; 座垫，后半截抬起来一点。
+[node name="Seat" type="Polygon2D" parent="Chassis"]
+color = Color(0.15, 0.14, 0.17, 1)
+polygon = PackedVector2Array(-44, -14, -8, -14, -6, -26, -34, -28)
+
+; 油箱，前半个鼓包。整辆车就靠这一块认出来是摩托。
+[node name="Tank" type="Polygon2D" parent="Chassis"]
+color = Color(0.88, 0.22, 0.20, 1)
+polygon = PackedVector2Array(0, -14, 6, -34, 30, -32, 34, -14)
+
+; 车把。
+[node name="Bar" type="Polygon2D" parent="Chassis"]
+color = Color(0.13, 0.14, 0.17, 1)
+polygon = PackedVector2Array(34, -14, 38, -40, 44, -40, 40, -14)
+
+[node name="Driver" type="Node2D" parent="Chassis"]
+position = Vector2(-8, -24)
+script = ExtResource("3_driver")
+
+; 车手头顶。**必须正好在 Driver 上面 36 px**（driver_visual.gd 的 HEAD_CENTER），
+; 否则画出来的头和真正判翻车的那个圆对不上 —— 看着没碰地却死了。
+[node name="Head" type="Area2D" parent="Chassis"]
+position = Vector2(-8, -60)
+collision_layer = 0
+collision_mask = 2
+
+[node name="HeadShape" type="CollisionShape2D" parent="Chassis/Head"]
+shape = SubResource("CS_head")
+
+[node name="RearWheel" type="RigidBody2D" parent="." groups=["wheel"]]
+position = Vector2(-46, 18)
+collision_layer = 1
+collision_mask = 3
+mass = 11.0
+physics_material_override = SubResource("PM_wheel")
+continuous_cd = 2
+contact_monitor = true
+max_contacts_reported = 4
+can_sleep = false
+
+[node name="Shape" type="CollisionShape2D" parent="RearWheel"]
+shape = SubResource("CS_wheel")
+
+; radius 必须和 CS_wheel 一致，否则画出来的轮子和滚动的那个对不上。
+[node name="Visual" type="Node2D" parent="RearWheel"]
+script = ExtResource("2_wheel")
+radius = 20.0
+tire_color = Color(0.11, 0.11, 0.14, 1)
+
+[node name="FrontWheel" type="RigidBody2D" parent="." groups=["wheel"]]
+position = Vector2(50, 18)
+collision_layer = 1
+collision_mask = 3
+mass = 11.0
+physics_material_override = SubResource("PM_wheel")
+continuous_cd = 2
+contact_monitor = true
+max_contacts_reported = 4
+can_sleep = false
+
+[node name="Shape" type="CollisionShape2D" parent="FrontWheel"]
+shape = SubResource("CS_wheel")
+
+[node name="Visual" type="Node2D" parent="FrontWheel"]
+script = ExtResource("2_wheel")
+radius = 20.0
+tire_color = Color(0.11, 0.11, 0.14, 1)
+
+[node name="RearJoint" type="PinJoint2D" parent="."]
+position = Vector2(-46, 18)
+node_a = NodePath("../Chassis")
+node_b = NodePath("../RearWheel")
+
+[node name="FrontJoint" type="PinJoint2D" parent="."]
+position = Vector2(50, 18)
+node_a = NodePath("../Chassis")
+node_b = NodePath("../FrontWheel")

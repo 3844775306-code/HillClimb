@@ -1,0 +1,156 @@
+[gd_scene load_steps=11 format=3]
+
+; 巴士：最重、爬坡最差、油箱最大的一辆。
+;
+; 形状就是个方盒子（车架是个带倒角的矩形），顶高 -54、底面 160 px。
+; 「重」是三处一起给的：
+;   - 质量 240（越野车 174，摩托 77）。**上限是吊桥的链子 280** —— 车比链子
+;     重就会把桥压成 V 字（tests/vehicles 会拦）。
+;   - 轮半径 23，四辆里最大。推力 = 转速 × 力矩系数 ÷ 半径，半径越大推力越小，
+;     所以这是「爬坡最差」的一部分来源，而且是**免费**的那部分 —— 不用改马达。
+;   - 转动惯量倍率 3.0（越野车 2.0）。碾过鼓包更稳，代价是爬坡更慢。
+;
+; 推重比 0.96 是四辆里唯一低于 1 的：推力还不到自重，稳态只能上到约 44° 的坡
+; （越野车实际起步 1.12 ≈ 48°）。力矩没有被限幅（需求 2.59e6 < 上限 2.7e6），
+; 所以 0.96 就是真拿得到的推力。
+;
+; 油箱 220，满油门烧 35 秒（越野车 16.7 秒）—— 续航是这辆车唯一的强项。
+;
+; 车厢里还有四个乘客（Passengers 节点，只有巴士有），画在一排车窗后面。
+
+[ext_resource type="Script" path="res://scripts/car.gd" id="1_car"]
+[ext_resource type="Script" path="res://scripts/wheel_visual.gd" id="2_wheel"]
+[ext_resource type="Script" path="res://scripts/driver_visual.gd" id="3_driver"]
+[ext_resource type="Script" path="res://scripts/effects.gd" id="4_effects"]
+[ext_resource type="Script" path="res://scripts/passenger_visual.gd" id="5_passengers"]
+
+[sub_resource type="PhysicsMaterial" id="PM_body"]
+friction = 0.7
+bounce = 0.05
+
+[sub_resource type="PhysicsMaterial" id="PM_wheel"]
+friction = 2.6
+rough = true
+bounce = 0.1
+
+; 方盒子，四角倒一下。底面 (-80,4) → (80,4) 共 160 px（越野车 168）。
+[sub_resource type="ConvexPolygonShape2D" id="CS_body"]
+points = PackedVector2Array(-80, 4, -80, -46, -72, -54, 72, -54, 80, -46, 80, 4)
+
+[sub_resource type="CircleShape2D" id="CS_wheel"]
+radius = 23.0
+
+[sub_resource type="CircleShape2D" id="CS_head"]
+radius = 15.0
+
+[node name="Bus" type="Node2D"]
+script = ExtResource("1_car")
+max_wheel_speed = 37.0
+motor_strength = 70000.0
+max_torque = 2700000.0
+inertia_scale = 3.0
+fuel_max = 220.0
+fuel_idle_drain = 1.8
+fuel_throttle_drain = 4.4
+
+[node name="Effects" type="Node2D" parent="."]
+top_level = true
+script = ExtResource("4_effects")
+
+[node name="Chassis" type="RigidBody2D" parent="."]
+collision_layer = 1
+collision_mask = 3
+mass = 200.0
+physics_material_override = SubResource("PM_body")
+continuous_cd = 2
+can_sleep = false
+
+[node name="Body" type="CollisionShape2D" parent="Chassis"]
+shape = SubResource("CS_body")
+
+[node name="BodyVisual" type="Polygon2D" parent="Chassis"]
+color = Color(0.24, 0.58, 0.42, 1)
+polygon = PackedVector2Array(-80, 4, -80, -46, -72, -54, 72, -54, 80, -46, 80, 4)
+
+; 一排车窗。从前往后通到车尾，一眼就是巴士。
+; 24 像素高（原来是 16）：后排乘客的头+肩要放进这块玻璃里，见 passenger_visual.gd。
+; 车顶在 -54，上下各留 5 像素，腰线在 -20，还是同一条通到车尾的车窗。
+[node name="Windows" type="Polygon2D" parent="Chassis"]
+color = Color(0.62, 0.83, 0.91, 1)
+polygon = PackedVector2Array(-66, -25, -66, -49, 56, -49, 56, -25)
+
+; 腰线。压在车窗下面，把方盒子切成上下两半。
+[node name="Stripe" type="Polygon2D" parent="Chassis"]
+color = Color(0.93, 0.93, 0.90, 1)
+polygon = PackedVector2Array(-80, -20, 80, -20, 80, -12, -80, -12)
+
+; 后排四个乘客。**压在车窗之上**（节点排在 Windows/Stripe 后面），所以看着是「隔着玻璃」。
+; 他们和车手一样会跟着车颠，但同样只看不碰物理。
+[node name="Passengers" type="Node2D" parent="Chassis"]
+script = ExtResource("5_passengers")
+
+; 司机坐得比车顶低，只有头露在挡风玻璃上面 —— 和越野车把驾驶室画在车顶上不一样。
+; 头高（车顶以上 25 px、离地 125 px）和越野车（116 px）差不多，翻车判据不至于因为
+; 换辆车就变一套。
+[node name="Driver" type="Node2D" parent="Chassis"]
+position = Vector2(44, -28)
+script = ExtResource("3_driver")
+
+; 车手头顶，正好在 Driver 上面 36 px（driver_visual.gd 的 HEAD_CENTER）。
+[node name="Head" type="Area2D" parent="Chassis"]
+position = Vector2(44, -64)
+collision_layer = 0
+collision_mask = 2
+
+[node name="HeadShape" type="CollisionShape2D" parent="Chassis/Head"]
+shape = SubResource("CS_head")
+
+[node name="RearWheel" type="RigidBody2D" parent="." groups=["wheel"]]
+position = Vector2(-56, 23)
+collision_layer = 1
+collision_mask = 3
+mass = 20.0
+physics_material_override = SubResource("PM_wheel")
+continuous_cd = 2
+contact_monitor = true
+max_contacts_reported = 4
+can_sleep = false
+
+[node name="Shape" type="CollisionShape2D" parent="RearWheel"]
+shape = SubResource("CS_wheel")
+
+[node name="Visual" type="Node2D" parent="RearWheel"]
+script = ExtResource("2_wheel")
+radius = 23.0
+rim_color = Color(0.72, 0.73, 0.78, 1)
+hub_color = Color(0.34, 0.36, 0.42, 1)
+
+[node name="FrontWheel" type="RigidBody2D" parent="." groups=["wheel"]]
+position = Vector2(56, 23)
+collision_layer = 1
+collision_mask = 3
+mass = 20.0
+physics_material_override = SubResource("PM_wheel")
+continuous_cd = 2
+contact_monitor = true
+max_contacts_reported = 4
+can_sleep = false
+
+[node name="Shape" type="CollisionShape2D" parent="FrontWheel"]
+shape = SubResource("CS_wheel")
+
+[node name="Visual" type="Node2D" parent="FrontWheel"]
+script = ExtResource("2_wheel")
+radius = 23.0
+rim_color = Color(0.72, 0.73, 0.78, 1)
+hub_color = Color(0.34, 0.36, 0.42, 1)
+
+[node name="RearJoint" type="PinJoint2D" parent="."]
+position = Vector2(-56, 23)
+node_a = NodePath("../Chassis")
+node_b = NodePath("../RearWheel")
+
+[node name="FrontJoint" type="PinJoint2D" parent="."]
+position = Vector2(56, 23)
+node_a = NodePath("../Chassis")
+node_b = NodePath("../FrontWheel")

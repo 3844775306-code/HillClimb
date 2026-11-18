@@ -1,0 +1,62 @@
+[gd_scene load_steps=17 format=3]
+
+[ext_resource type="Script" path="res://scripts/game.gd" id="1_game"]
+[ext_resource type="PackedScene" path="res://scenes/car.tscn" id="2_car"]
+[ext_resource type="Script" path="res://scripts/terrain.gd" id="3_terrain"]
+[ext_resource type="Script" path="res://scripts/background.gd" id="4_background"]
+[ext_resource type="Script" path="res://scripts/hud.gd" id="5_hud"]
+[ext_resource type="PackedScene" path="res://scenes/pickup.tscn" id="6_pickup"]
+[ext_resource type="PackedScene" path="res://scenes/rope_bridge.tscn" id="7_bridge"]
+[ext_resource type="PackedScene" path="res://scenes/sandstorm.tscn" id="8_sandstorm"]
+[ext_resource type="PackedScene" path="res://scenes/ice_lake.tscn" id="9_lake"]
+[ext_resource type="PackedScene" path="res://scenes/crater.tscn" id="10_crater"]
+[ext_resource type="PackedScene" path="res://scenes/stones.tscn" id="11_stones"]
+[ext_resource type="PackedScene" path="res://scenes/tunnel.tscn" id="12_tunnel"]
+[ext_resource type="PackedScene" path="res://scenes/trees.tscn" id="13_trees"]
+[ext_resource type="PackedScene" path="res://scenes/chimneys.tscn" id="14_chimneys"]
+[ext_resource type="PackedScene" path="res://scenes/hazard_zone.tscn" id="15_hazard"]
+[ext_resource type="Script" path="res://scripts/night.gd" id="16_night"]
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_game")
+
+[node name="Background" type="Node2D" parent="."]
+script = ExtResource("4_background")
+
+[node name="Terrain" type="Node2D" parent="."]
+script = ExtResource("3_terrain")
+coin_scene = ExtResource("6_pickup")
+fuel_scene = ExtResource("6_pickup")
+bridge_scene = ExtResource("7_bridge")
+sandstorm_scene = ExtResource("8_sandstorm")
+lake_scene = ExtResource("9_lake")
+crater_scene = ExtResource("10_crater")
+stones_scene = ExtResource("11_stones")
+tunnel_scene = ExtResource("12_tunnel")
+trees_scene = ExtResource("13_trees")
+chimneys_scene = ExtResource("14_chimneys")
+hazard_scene = ExtResource("15_hazard")
+
+[node name="Car" parent="." instance=ExtResource("2_car")]
+position = Vector2(200, 340)
+z_index = 1
+
+[node name="Night" type="Node2D" parent="."]
+visible = false
+z_index = 2
+script = ExtResource("16_night")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(350, 250)
+zoom = Vector2(0.85, 0.85)
+
+[node name="UILayer" type="CanvasLayer" parent="."]
+
+[node name="HUD" type="Control" parent="UILayer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("5_hud")

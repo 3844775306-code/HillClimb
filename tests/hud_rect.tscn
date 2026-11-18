@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/hud_rect.gd" id="1_hudrect"]
+
+[node name="HudRect" type="Node"]
+script = ExtResource("1_hudrect")

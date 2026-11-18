@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://bgcxje6c8fe1i"]
+
+[ext_resource type="Script" path="res://tests/grip_climb_probe.gd" id="1_probe"]
+
+[node name="GripClimbProbe" type="Node"]
+script = ExtResource("1_probe")

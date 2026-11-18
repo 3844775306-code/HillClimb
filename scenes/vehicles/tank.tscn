@@ -1,0 +1,177 @@
+[gd_scene load_steps=11 format=3]
+
+; 坦克：八辆车里最重、最慢、**抓地最强**的一辆。
+;
+; ## 履带是真的吗
+;
+; **不是。** 底下跑的还是两个圆形轮子（半径 24），履带是画上去的
+; （`scripts/track_visual.gd`，挂在根节点下、排在轮子后面）。
+;
+; 为什么不做成一条真履带：Godot 2D 里一条会随地形起伏的履带要么是一串刚体组成的
+; 链条（十几节，每节都要铰链和碰撞形状，性能和维护成本都爆炸），要么是一张会变形的
+; 多边形——而**变形多边形推不动刚体**，物理上等于没有履带。四辆车的成本收益摆在这里：
+; 玩家要的是「抓地能力很强」这个手感，而那件事可以直接给（见下）。
+;
+; ## 抓地力是怎么给的
+;
+; `PM_wheel.friction` 从标配的 2.6 抬到 **7.0**（八辆车里唯一一辆改这个数的）。
+; 摩擦系数直接决定「轮面线速度」能换成多少向前的力，所以这是最直给的一刀：
+; 雪地（地图自己会把摩擦乘下去）、碎石坡、翘起的树根，别的车在那儿空转打滑，
+; 它照样往上爬。这也是它唯一的强项。
+;
+; 代价那一头由「慢」来付：
+;   - 转速 26（越野车 30）配半径 24，极速只有 624 px/s（越野车 1050）。
+;   - 整车 180 + 26×2 = 232，是八辆车里第二重的（巴士 240，上限是吊桥链子 280）。
+;   - 推重比 1.15 —— 比巴士（0.96）好，比越野车（1.68）差得多。
+;   - 油箱 240、满油门 33 秒：跑不快就得多带油，不然爬不到一半就熄火。
+;
+; 转动惯量倍率 3.5（越野车 2.0）：碾过石头时车身几乎不颠，是「重」这个手感的一部分。
+
+[ext_resource type="Script" path="res://scripts/car.gd" id="1_car"]
+[ext_resource type="Script" path="res://scripts/wheel_visual.gd" id="2_wheel"]
+[ext_resource type="Script" path="res://scripts/driver_visual.gd" id="3_driver"]
+[ext_resource type="Script" path="res://scripts/effects.gd" id="4_effects"]
+[ext_resource type="Script" path="res://scripts/track_visual.gd" id="5_track"]
+
+[sub_resource type="PhysicsMaterial" id="PM_body"]
+friction = 0.7
+bounce = 0.05
+
+; **7.0 是这辆车的一半设计。** 标配 2.6，别的车一辆都没改过。调低这个数，
+; 坦克就只剩「又重又慢」了。
+[sub_resource type="PhysicsMaterial" id="PM_wheel"]
+friction = 7.0
+rough = true
+bounce = 0.1
+
+; 低矮的车体 + 斜车头。底面 (-82,6) → (82,6) 共 164 px（越野车 168）。
+; 车顶 -36 是八辆车里最矮的：重心低，加上 3.5 的惯量倍率，它是最不容易翻的一辆。
+[sub_resource type="ConvexPolygonShape2D" id="CS_body"]
+points = PackedVector2Array(-82, 6, -82, -26, -66, -36, 60, -36, 82, -22, 82, 6)
+
+[sub_resource type="CircleShape2D" id="CS_wheel"]
+radius = 24.0
+
+[sub_resource type="CircleShape2D" id="CS_head"]
+radius = 15.0
+
+[node name="Tank" type="Node2D"]
+script = ExtResource("1_car")
+max_wheel_speed = 26.0
+motor_strength = 120700.0
+max_torque = 3400000.0
+inertia_scale = 3.5
+fuel_max = 240.0
+fuel_idle_drain = 2.0
+fuel_throttle_drain = 5.2
+
+[node name="Effects" type="Node2D" parent="."]
+top_level = true
+script = ExtResource("4_effects")
+
+[node name="Chassis" type="RigidBody2D" parent="."]
+collision_layer = 1
+collision_mask = 3
+mass = 180.0
+physics_material_override = SubResource("PM_body")
+continuous_cd = 2
+can_sleep = false
+
+[node name="Body" type="CollisionShape2D" parent="Chassis"]
+shape = SubResource("CS_body")
+
+[node name="BodyVisual" type="Polygon2D" parent="Chassis"]
+color = Color(0.38, 0.42, 0.30, 1)
+polygon = PackedVector2Array(-82, 6, -82, -26, -66, -36, 60, -36, 82, -22, 82, 6)
+
+; 下面四块都是**纯装饰**，碰撞形状里没有它们（和越野车的 Cab / 摩托的 Tank 一样）。
+[node name="TrackGuard" type="Polygon2D" parent="Chassis"]
+color = Color(0.29, 0.32, 0.23, 1)
+polygon = PackedVector2Array(-82, 6, -82, -2, 82, -2, 82, 6)
+
+[node name="Turret" type="Polygon2D" parent="Chassis"]
+color = Color(0.46, 0.50, 0.36, 1)
+polygon = PackedVector2Array(-36, -34, -26, -54, 26, -54, 36, -34)
+
+[node name="Barrel" type="Polygon2D" parent="Chassis"]
+color = Color(0.33, 0.36, 0.27, 1)
+polygon = PackedVector2Array(24, -48, 88, -52, 88, -44, 24, -40)
+
+[node name="Hatch" type="Polygon2D" parent="Chassis"]
+color = Color(0.22, 0.25, 0.18, 1)
+polygon = PackedVector2Array(-14, -54, -8, -60, 8, -60, 14, -54)
+
+; 车手从炮塔顶盖里探出来 —— 坦克没这个必要，但**「头碰到地面就算翻车」是这游戏
+; 最经典的一条规则**（见 car.gd 的 REASON_CRASH），得有个头露在外面才能成立。
+;
+; 原点在胯下、身体画在上方 22 px（driver_visual.gd）。炮塔顶面 -54，所以原点放 -34：
+; 身体落在 -30 ~ -56，脑袋整个探在顶盖上面。
+[node name="Driver" type="Node2D" parent="Chassis"]
+position = Vector2(0, -34)
+script = ExtResource("3_driver")
+
+; 头必须在 Driver 正上方**整整 36 px**（driver_visual.gd 的 HEAD_CENTER）。
+[node name="Head" type="Area2D" parent="Chassis"]
+position = Vector2(0, -70)
+collision_layer = 0
+collision_mask = 2
+
+[node name="HeadShape" type="CollisionShape2D" parent="Chassis/Head"]
+shape = SubResource("CS_head")
+
+[node name="RearWheel" type="RigidBody2D" parent="." groups=["wheel"]]
+position = Vector2(-50, 14)
+collision_layer = 1
+collision_mask = 3
+mass = 26.0
+physics_material_override = SubResource("PM_wheel")
+continuous_cd = 2
+contact_monitor = true
+max_contacts_reported = 4
+can_sleep = false
+
+[node name="Shape" type="CollisionShape2D" parent="RearWheel"]
+shape = SubResource("CS_wheel")
+
+; 负重轮的配色：整颗都是暗橄榄色，辐条几乎看不出来（它画在下面的履带里面）。
+[node name="Visual" type="Node2D" parent="RearWheel"]
+script = ExtResource("2_wheel")
+radius = 24.0
+tire_color = Color(0.19, 0.21, 0.16, 1)
+rim_color = Color(0.29, 0.32, 0.25, 1)
+hub_color = Color(0.14, 0.16, 0.12, 1)
+
+[node name="FrontWheel" type="RigidBody2D" parent="." groups=["wheel"]]
+position = Vector2(54, 14)
+collision_layer = 1
+collision_mask = 3
+mass = 26.0
+physics_material_override = SubResource("PM_wheel")
+continuous_cd = 2
+contact_monitor = true
+max_contacts_reported = 4
+can_sleep = false
+
+[node name="Shape" type="CollisionShape2D" parent="FrontWheel"]
+shape = SubResource("CS_wheel")
+
+[node name="Visual" type="Node2D" parent="FrontWheel"]
+script = ExtResource("2_wheel")
+radius = 24.0
+tire_color = Color(0.19, 0.21, 0.16, 1)
+rim_color = Color(0.29, 0.32, 0.25, 1)
+hub_color = Color(0.14, 0.16, 0.12, 1)
+
+; 履带。**必须排在这两个轮子后面**：同级节点按顺序画，排在前面会被轮子盖住。
+[node name="Track" type="Node2D" parent="."]
+script = ExtResource("5_track")
+
+[node name="RearJoint" type="PinJoint2D" parent="."]
+position = Vector2(-50, 14)
+node_a = NodePath("../Chassis")
+node_b = NodePath("../RearWheel")
+
+[node name="FrontJoint" type="PinJoint2D" parent="."]
+position = Vector2(54, 14)
+node_a = NodePath("../Chassis")
+node_b = NodePath("../FrontWheel")

@@ -1,0 +1,171 @@
+[gd_scene load_steps=10 format=3]
+
+; 登月车：唯一一辆**会飞**的车 —— 同时按住前进和倒退就点火升空。
+;
+; ## 起飞是怎么做的
+;
+; 见 car.gd 的「起飞」一组 `@export`。三件事都在那儿：
+;   - 手势：`Input.get_axis("drive_back", "drive_forward")` 在两个键同时按下时返回
+;     **0**，所以「两个都按着」这件事在油门值里根本看不出来，必须分开读两次
+;     （`_read_throttle`）。别的车 `hover_enabled = false`，这一段整个不生效。
+;   - 上升：给整车每个刚体各加一份「本地自重 × `hover_lift`」的力。**是读地图的
+;     `gravity_scale` 算出来的**，所以开进月球图（0.35 倍重力）不会窜出屏幕。
+;   - 前进：自动给一个恒定推力，速度上限锁在「轮速 × 轮半径」= `Vehicles.stats`
+;     里的 `top_speed`。所以**「前进速度和正常行驶一样」在升级极速之后依然成立**
+;     —— `hover_speed` 留 0（自动取），写死一个数的话练过极速的车一飞就掉速。
+;
+; 代价是油耗：`hover_fuel_scale = 3.0`，整条消耗速率乘三倍。满油门 25 秒的车，
+; 飞起来只有 8 秒多 —— 一次短跳，不是随便兜风。
+;
+; ## 平时的它
+;
+; 轻（88 + 12×2 = 112）、快（轮速 45，极速 1080 px/s，仅次于赛车）、脆。
+; 推重比 1.25：比越野车（1.68）低，但它有别的车没有的那条路 —— 飞过去。
+; 轮子小（半径 24）而车身低平，所以它也是**最容易架在坑口上**的形状之一，
+; 好在车壳底面只有 160 px（见 tests/vehicles 的「车壳长度上限」一节）。
+
+[ext_resource type="Script" path="res://scripts/car.gd" id="1_car"]
+[ext_resource type="Script" path="res://scripts/wheel_visual.gd" id="2_wheel"]
+[ext_resource type="Script" path="res://scripts/driver_visual.gd" id="3_driver"]
+[ext_resource type="Script" path="res://scripts/effects.gd" id="4_effects"]
+
+[sub_resource type="PhysicsMaterial" id="PM_body"]
+friction = 0.7
+bounce = 0.05
+
+[sub_resource type="PhysicsMaterial" id="PM_wheel"]
+friction = 2.6
+rough = true
+bounce = 0.1
+
+; 低平的托盘底盘，两侧斜着收上去 —— **凸多边形**，不能做成「平板上垒一节驾驶舱」
+; 那种轮廓（中间凸起来会带出两个凹角，`ConvexPolygonShape2D` 只认凸的，
+; 凹进去的顶点会被静默丢掉，碰撞形状就和看到的对不上了）。驾驶舱是单独一块
+; `Polygon2D` 画上去的，和越野车的 Cab 一个路子。
+;
+; 底面 (-80,8) → (80,8) 共 160 px（越野车 168）。
+[sub_resource type="ConvexPolygonShape2D" id="CS_body"]
+points = PackedVector2Array(-80, 8, -80, -8, -60, -20, 60, -20, 80, -8, 80, 8)
+
+[sub_resource type="CircleShape2D" id="CS_wheel"]
+radius = 24.0
+
+[sub_resource type="CircleShape2D" id="CS_head"]
+radius = 15.0
+
+[node name="Rover" type="Node2D"]
+script = ExtResource("1_car")
+max_wheel_speed = 45.0
+motor_strength = 36590.0
+max_torque = 1800000.0
+inertia_scale = 1.5
+hover_enabled = true
+hover_lift = 1.9
+hover_push = 0.8
+hover_fuel_scale = 3.0
+fuel_max = 150.0
+fuel_idle_drain = 1.6
+fuel_throttle_drain = 4.4
+
+; `hover_speed` **故意不写**：留 0 表示「自动取轮速 × 轮半径」，升级「极速」之后
+; 飞行速度跟着一起涨。写死一个数就变成「练了极速反而飞得更慢」。
+
+[node name="Effects" type="Node2D" parent="."]
+top_level = true
+script = ExtResource("4_effects")
+
+[node name="Chassis" type="RigidBody2D" parent="."]
+collision_layer = 1
+collision_mask = 3
+mass = 88.0
+physics_material_override = SubResource("PM_body")
+continuous_cd = 2
+can_sleep = false
+
+[node name="Body" type="CollisionShape2D" parent="Chassis"]
+shape = SubResource("CS_body")
+
+[node name="BodyVisual" type="Polygon2D" parent="Chassis"]
+color = Color(0.80, 0.81, 0.84, 1)
+polygon = PackedVector2Array(-80, 8, -80, -8, -60, -20, 60, -20, 80, -8, 80, 8)
+
+; 下面四块都是**纯装饰**，碰撞形状里没有它们。
+[node name="Foil" type="Polygon2D" parent="Chassis"]
+color = Color(0.92, 0.74, 0.24, 1)
+polygon = PackedVector2Array(-80, -8, -60, -20, -34, -20, -34, -8)
+
+[node name="SolarPanel" type="Polygon2D" parent="Chassis"]
+color = Color(0.16, 0.30, 0.62, 1)
+polygon = PackedVector2Array(34, -20, 74, -34, 82, -24, 42, -10)
+
+[node name="Dish" type="Polygon2D" parent="Chassis"]
+color = Color(0.90, 0.91, 0.94, 1)
+polygon = PackedVector2Array(-84, -20, -70, -44, -56, -20)
+
+; 车手坐在敞篷底盘上 —— 原点在胯下、身体画在上方 22 px（driver_visual.gd）。
+; 底盘顶面 -20，所以原点放 -22：身体落在 -18 ~ -44，正好坐上去。
+[node name="Driver" type="Node2D" parent="Chassis"]
+position = Vector2(0, -22)
+script = ExtResource("3_driver")
+
+; 头必须在 Driver 正上方**整整 36 px**（driver_visual.gd 的 HEAD_CENTER）。
+[node name="Head" type="Area2D" parent="Chassis"]
+position = Vector2(0, -58)
+collision_layer = 0
+collision_mask = 2
+
+[node name="HeadShape" type="CollisionShape2D" parent="Chassis/Head"]
+shape = SubResource("CS_head")
+
+[node name="RearWheel" type="RigidBody2D" parent="." groups=["wheel"]]
+position = Vector2(-56, 16)
+collision_layer = 1
+collision_mask = 3
+mass = 12.0
+physics_material_override = SubResource("PM_wheel")
+continuous_cd = 2
+contact_monitor = true
+max_contacts_reported = 4
+can_sleep = false
+
+[node name="Shape" type="CollisionShape2D" parent="RearWheel"]
+shape = SubResource("CS_wheel")
+
+; 月球车的网状轮子：轮辋画得浅，辐条是 5 根细的 —— 挡不住里面，看着就「空」。
+[node name="Visual" type="Node2D" parent="RearWheel"]
+script = ExtResource("2_wheel")
+radius = 24.0
+tire_color = Color(0.62, 0.64, 0.68, 1)
+rim_color = Color(0.86, 0.87, 0.90, 1)
+hub_color = Color(0.42, 0.44, 0.50, 1)
+
+[node name="FrontWheel" type="RigidBody2D" parent="." groups=["wheel"]]
+position = Vector2(60, 16)
+collision_layer = 1
+collision_mask = 3
+mass = 12.0
+physics_material_override = SubResource("PM_wheel")
+continuous_cd = 2
+contact_monitor = true
+max_contacts_reported = 4
+can_sleep = false
+
+[node name="Shape" type="CollisionShape2D" parent="FrontWheel"]
+shape = SubResource("CS_wheel")
+
+[node name="Visual" type="Node2D" parent="FrontWheel"]
+script = ExtResource("2_wheel")
+radius = 24.0
+tire_color = Color(0.62, 0.64, 0.68, 1)
+rim_color = Color(0.86, 0.87, 0.90, 1)
+hub_color = Color(0.42, 0.44, 0.50, 1)
+
+[node name="RearJoint" type="PinJoint2D" parent="."]
+position = Vector2(-56, 16)
+node_a = NodePath("../Chassis")
+node_b = NodePath("../RearWheel")
+
+[node name="FrontJoint" type="PinJoint2D" parent="."]
+position = Vector2(60, 16)
+node_a = NodePath("../Chassis")
+node_b = NodePath("../FrontWheel")

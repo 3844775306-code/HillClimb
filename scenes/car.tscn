@@ -1,0 +1,113 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://scripts/car.gd" id="1_car"]
+[ext_resource type="Script" path="res://scripts/wheel_visual.gd" id="2_wheel"]
+[ext_resource type="Script" path="res://scripts/driver_visual.gd" id="3_driver"]
+[ext_resource type="Script" path="res://scripts/effects.gd" id="4_effects"]
+
+[sub_resource type="PhysicsMaterial" id="PM_body"]
+friction = 0.7
+bounce = 0.05
+
+[sub_resource type="PhysicsMaterial" id="PM_wheel"]
+friction = 2.6
+rough = true
+bounce = 0.1
+
+[sub_resource type="ConvexPolygonShape2D" id="CS_body"]
+points = PackedVector2Array(-78, 8, -78, -18, -42, -30, 54, -30, 88, -10, 90, 6)
+
+[sub_resource type="CircleShape2D" id="CS_wheel"]
+radius = 21.0
+
+[sub_resource type="CircleShape2D" id="CS_head"]
+radius = 15.0
+
+[node name="Car" type="Node2D"]
+script = ExtResource("1_car")
+
+; 排在 Chassis 前面是两个原因，都不是随便放的：
+;   - 同级节点按顺序画，所以它画在地形之上、车体之下 —— 尘土像是从车底扬起来的；
+;   - top_level 让粒子活在世界坐标里，不会跟着车身/轮子转。
+[node name="Effects" type="Node2D" parent="."]
+top_level = true
+script = ExtResource("4_effects")
+
+[node name="Chassis" type="RigidBody2D" parent="."]
+collision_layer = 1
+collision_mask = 3
+mass = 130.0
+physics_material_override = SubResource("PM_body")
+continuous_cd = 2
+can_sleep = false
+
+[node name="Body" type="CollisionShape2D" parent="Chassis"]
+shape = SubResource("CS_body")
+
+[node name="BodyVisual" type="Polygon2D" parent="Chassis"]
+color = Color(0.85, 0.31, 0.13, 1)
+polygon = PackedVector2Array(-78, 8, -78, -18, -42, -30, 54, -30, 88, -10, 90, 6)
+
+[node name="Cab" type="Polygon2D" parent="Chassis"]
+color = Color(0.95, 0.45, 0.16, 1)
+polygon = PackedVector2Array(-34, -24, -18, -54, 44, -54, 58, -24)
+
+[node name="Window" type="Polygon2D" parent="Chassis"]
+color = Color(0.62, 0.83, 0.91, 1)
+polygon = PackedVector2Array(-24, -28, -12, -48, 34, -48, 46, -28)
+
+[node name="Driver" type="Node2D" parent="Chassis"]
+position = Vector2(18, -26)
+script = ExtResource("3_driver")
+
+[node name="Head" type="Area2D" parent="Chassis"]
+position = Vector2(18, -62)
+collision_layer = 0
+collision_mask = 2
+
+[node name="HeadShape" type="CollisionShape2D" parent="Chassis/Head"]
+shape = SubResource("CS_head")
+
+[node name="RearWheel" type="RigidBody2D" parent="." groups=["wheel"]]
+position = Vector2(-52, 18)
+collision_layer = 1
+collision_mask = 3
+mass = 22.0
+physics_material_override = SubResource("PM_wheel")
+continuous_cd = 2
+contact_monitor = true
+max_contacts_reported = 4
+can_sleep = false
+
+[node name="Shape" type="CollisionShape2D" parent="RearWheel"]
+shape = SubResource("CS_wheel")
+
+[node name="Visual" type="Node2D" parent="RearWheel"]
+script = ExtResource("2_wheel")
+
+[node name="FrontWheel" type="RigidBody2D" parent="." groups=["wheel"]]
+position = Vector2(58, 18)
+collision_layer = 1
+collision_mask = 3
+mass = 22.0
+physics_material_override = SubResource("PM_wheel")
+continuous_cd = 2
+contact_monitor = true
+max_contacts_reported = 4
+can_sleep = false
+
+[node name="Shape" type="CollisionShape2D" parent="FrontWheel"]
+shape = SubResource("CS_wheel")
+
+[node name="Visual" type="Node2D" parent="FrontWheel"]
+script = ExtResource("2_wheel")
+
+[node name="RearJoint" type="PinJoint2D" parent="."]
+position = Vector2(-52, 18)
+node_a = NodePath("../Chassis")
+node_b = NodePath("../RearWheel")
+
+[node name="FrontJoint" type="PinJoint2D" parent="."]
+position = Vector2(58, 18)
+node_a = NodePath("../Chassis")
+node_b = NodePath("../FrontWheel")

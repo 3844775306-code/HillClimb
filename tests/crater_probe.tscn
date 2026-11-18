@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://c8wq3mnt7kd2p"]
+
+[ext_resource type="Script" path="res://tests/crater_probe.gd" id="1_probe"]
+
+[node name="CraterProbe" type="Node"]
+script = ExtResource("1_probe")

@@ -1,0 +1,160 @@
+[gd_scene load_steps=10 format=3]
+
+; 独轮车：全游戏唯一一辆**只有一个轮子**的车，也是唯一一辆打开陀螺仪（自平衡）的。
+;
+; 它带来两条结构上的特例，都在下面的注释里标了出来：
+;   - 没有 `FrontWheel` / `FrontJoint`。`HillCar.wheels` 收出来只有一个，
+;     `rear_wheel` 和 `front_wheel` 两个别名一起指向它（见 car.gd 那段注释）。
+;     所以**遍历全车轮子的代码一律走 `wheels`** —— 拿那一对别名遍历会把它算两遍。
+;   - 单轮车的「恰好一个轮子着地」是常态，不是特技，所以它永远不发独轮奖励
+;     （`HillCar._update_wheelie` 里那道 `wheels.size() < 2` 的闸就是为它写的）。
+;
+; 相扑选手式的重心：车架是个窄梯形立柱（底宽 28、顶宽 12）。**这个「重心在接地
+; 点上方」正是纯物理下它开场就倒的原因**，靠的是 `balance_torque` 这套陀螺仪把
+; 它拧回来 —— 拖这个数就是「能救回多大倾角」的旋钮，实测极限倾角看 tests/balance。
+;
+; 力臂是 **26 px**（轮心到形状原点的距离），**不是 22**。梯形的面积质心确实在
+; (0, 3.8)，但 Godot 2D 给 `ConvexPolygonShape2D` 算的「自动重心」取的是**碰撞
+; 形状自己的位置**，不是面积质心 —— 实测见 `HillCar._pin_lever` 那段注释。
+;
+; 但**光有反馈救不了给油那一下**：马达的反作用力作用在轮心上，比重心低 26 px，
+; 凭空多一个抬头力矩；而反馈要等倾角出来才出力，等它反应过来车已经仰过去了。
+; 所以独轮车另外开了 `balance_assist`（前馈，1.0 = 按算出来的物理量全额补）。
+; 比例怎么算写在 car.gd 的 `_reaction_share` 里。**关掉它，`tests/balance` 的
+; 「满油门 2 秒」那一节当场就红。**
+;
+; `balance_full_angle` 从默认的 0.5 收到 0.18：前馈补的是**主项**，剩一个约 8.8 万
+; 的残差抵不掉，而陀螺仪对恒定力矩的等效刚度只有 `斜率 − m·g·d`。0.5 时斜率太小，
+; 8.8 万残差就是 19° 常驻倾角，40 帧后翻车（实测 155°）；0.18 时是 3° 前倾。
+; 阻尼项几乎不影响这一条 —— 残差是**恒定**的，速度阻尼压不住它。
+; 实测（满油门 2 秒后的倾角）：0.50 → 翻车，0.35 → 10.2°，0.25 → 4.6°，
+; 0.18 → 2.9°，0.12 → 1.7°。取 0.18 是留余量：引擎练满之后给油力矩还会涨两成。
+;
+; 质量 62 + 16 = 78，是八辆车里最轻的。推力 = 转速 × 力矩系数 ÷ 轮半径，
+; 只有一个轮子出力，所以 36 × 70000 ÷ 28 = 90000 ≈ 1.18 倍自重 ——
+; 刚低于翘头线 1.45。
+;
+; 轮半径 28 是八辆车里最大的之一（怪兽卡车 34）：大轮子碾过碎石的颠簸最小，
+; 代价是推力被半径除小。离地间隙 32 px 也够（下限 31）。
+
+[ext_resource type="Script" path="res://scripts/car.gd" id="1_car"]
+[ext_resource type="Script" path="res://scripts/wheel_visual.gd" id="2_wheel"]
+[ext_resource type="Script" path="res://scripts/driver_visual.gd" id="3_driver"]
+[ext_resource type="Script" path="res://scripts/effects.gd" id="4_effects"]
+
+[sub_resource type="PhysicsMaterial" id="PM_body"]
+friction = 0.7
+bounce = 0.05
+
+; 独轮车的抓地**刻意给得比别的车高一点**（2.6 → 3.4）：它只有一个接地点，
+; 起步、爬坡、刹车全靠那一个轮子，摩擦系数低了会原地空转。
+[sub_resource type="PhysicsMaterial" id="PM_wheel"]
+friction = 3.4
+rough = true
+bounce = 0.1
+
+; 立柱。底面 (-14,22) → (14,22) 只有 28 px 长 —— **车壳越短越不容易架在坑口上**
+; （上限见 tests/vehicles 的「车壳长度上限」一节）。凸多边形，不能画成带收腰的
+; 沙漏形：`ConvexPolygonShape2D` 只认凸的，凹进去的顶点会被静默丢掉。
+[sub_resource type="ConvexPolygonShape2D" id="CS_body"]
+points = PackedVector2Array(-14, 22, -6, -20, 6, -20, 14, 22)
+
+[sub_resource type="CircleShape2D" id="CS_wheel"]
+radius = 28.0
+
+[sub_resource type="CircleShape2D" id="CS_head"]
+radius = 15.0
+
+[node name="Mono" type="Node2D"]
+script = ExtResource("1_car")
+max_wheel_speed = 36.0
+motor_strength = 70000.0
+max_torque = 2800000.0
+inertia_scale = 2.0
+balance_torque = 35.0
+balance_full_angle = 0.18
+balance_damping = 0.6
+balance_assist = 1.0
+fuel_max = 110.0
+fuel_idle_drain = 1.5
+fuel_throttle_drain = 4.2
+
+[node name="Effects" type="Node2D" parent="."]
+top_level = true
+script = ExtResource("4_effects")
+
+[node name="Chassis" type="RigidBody2D" parent="."]
+collision_layer = 1
+collision_mask = 3
+mass = 62.0
+physics_material_override = SubResource("PM_body")
+continuous_cd = 2
+can_sleep = false
+
+[node name="Body" type="CollisionShape2D" parent="Chassis"]
+shape = SubResource("CS_body")
+
+[node name="BodyVisual" type="Polygon2D" parent="Chassis"]
+color = Color(0.29, 0.34, 0.44, 1)
+polygon = PackedVector2Array(-14, 22, -6, -20, 6, -20, 14, 22)
+
+; 陀螺仪：画在立柱中段的一圈亮色带子。**纯装饰**，碰撞形状里没有它
+; —— 和 Cab / Seat / Wing 那些一样，只是让玩家看得出这辆车装了什么。
+[node name="Gyro" type="Polygon2D" parent="Chassis"]
+color = Color(0.24, 0.78, 0.82, 1)
+polygon = PackedVector2Array(-11, -2, -8, -12, 8, -12, 11, -2)
+
+[node name="SeatPost" type="Polygon2D" parent="Chassis"]
+color = Color(0.55, 0.58, 0.64, 1)
+polygon = PackedVector2Array(-11, 16, -3, -14, 3, -14, 11, 16)
+
+; 车座：比立柱宽出来一圈，好让「车手坐在上面」这件事一眼看得出来。
+[node name="Saddle" type="Polygon2D" parent="Chassis"]
+color = Color(0.12, 0.12, 0.15, 1)
+polygon = PackedVector2Array(-23, -21, -16, -31, 16, -31, 23, -21)
+
+; 车手的原点在胯下，身体画在原点上方 22 px 处（见 driver_visual.gd）。
+; 车座顶面在 -31，所以原点放 -25：身体底边落在 -21，正好坐在座垫上。
+[node name="Driver" type="Node2D" parent="Chassis"]
+position = Vector2(0, -25)
+script = ExtResource("3_driver")
+
+; 头必须在 Driver 正上方**整整 36 px**（driver_visual.gd 的 HEAD_CENTER）。
+[node name="Head" type="Area2D" parent="Chassis"]
+position = Vector2(0, -61)
+collision_layer = 0
+collision_mask = 2
+
+[node name="HeadShape" type="CollisionShape2D" parent="Chassis/Head"]
+shape = SubResource("CS_head")
+
+; **只有一个轮子，而且名字就叫 RearWheel。**
+;
+; 名字不是笔误：`Vehicles.stats` 取轮半径、`tests/vehicles` 的契约、还有几处
+; 绝对节点路径都认这个名字，改成 `Wheel` 要动的地方比收益多。它同时是后轮和前轮
+; —— `rear_wheel` / `front_wheel` 两个别名都指向它。
+[node name="RearWheel" type="RigidBody2D" parent="." groups=["wheel"]]
+position = Vector2(0, 26)
+collision_layer = 1
+collision_mask = 3
+mass = 16.0
+physics_material_override = SubResource("PM_wheel")
+continuous_cd = 2
+contact_monitor = true
+max_contacts_reported = 4
+can_sleep = false
+
+[node name="Shape" type="CollisionShape2D" parent="RearWheel"]
+shape = SubResource("CS_wheel")
+
+[node name="Visual" type="Node2D" parent="RearWheel"]
+script = ExtResource("2_wheel")
+radius = 28.0
+tire_color = Color(0.11, 0.11, 0.14, 1)
+rim_color = Color(0.76, 0.78, 0.82, 1)
+hub_color = Color(0.38, 0.40, 0.47, 1)
+
+[node name="RearJoint" type="PinJoint2D" parent="."]
+position = Vector2(0, 26)
+node_a = NodePath("../Chassis")
+node_b = NodePath("../RearWheel")

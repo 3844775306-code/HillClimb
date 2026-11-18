@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://fm2lr8wu5emi"]
+
+[ext_resource type="Script" path="res://tests/fuel_supply.gd" id="1_fuel"]
+
+[node name="FuelSupplyTest" type="Node"]
+script = ExtResource("1_fuel")

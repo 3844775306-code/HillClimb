@@ -1,0 +1,146 @@
+[gd_scene load_steps=10 format=3]
+
+; 赛车：起步最快、极速最高的一辆。
+;
+; 「更容易加速」是两个数一起给的，不是单看推重比：
+;   - 推重比 1.41 **没有被 max_torque 限幅**（需求 1.848e6 < 上限 1.9e6）。
+;     越野车的 1.68 是设计值、真上路只有 1.12（被限幅到 2.0e6），所以赛车
+;     起步时实际拿到的推力**比越野车高**（1.41 > 1.12）—— 这就是「起步最快」。
+;   - 极速 1254（越野车 1050），轮子转得更快、半径更大一点。
+;
+; 「不爱翻」靠的是形状不是推重比：轮距 124 是四辆里最长的，车身压得很低
+; （顶高 -20，越野车带驾驶室到 -54）。1.41 离翘头线 1.45 只有 3% 的余量，
+; 换越野车那样的高车身早就后仰了，这里靠长轴距和低重心扛住。
+;
+; 车架底面 166 px，压在越野车的 168 以下 —— 越野车是整套标定的基准，新车
+; 不许比它长（tests/vehicles 的「车壳长度上限」一节）。
+
+[ext_resource type="Script" path="res://scripts/car.gd" id="1_car"]
+[ext_resource type="Script" path="res://scripts/wheel_visual.gd" id="2_wheel"]
+[ext_resource type="Script" path="res://scripts/driver_visual.gd" id="3_driver"]
+[ext_resource type="Script" path="res://scripts/effects.gd" id="4_effects"]
+
+[sub_resource type="PhysicsMaterial" id="PM_body"]
+friction = 0.7
+bounce = 0.05
+
+[sub_resource type="PhysicsMaterial" id="PM_wheel"]
+friction = 2.6
+rough = true
+bounce = 0.1
+
+; 又长又扁：底面 (-78,4) → (88,4) 共 166 px，顶只有 -20。
+[sub_resource type="ConvexPolygonShape2D" id="CS_body"]
+points = PackedVector2Array(-78, 4, -78, -10, -50, -20, 58, -20, 86, -8, 88, 4)
+
+[sub_resource type="CircleShape2D" id="CS_wheel"]
+radius = 19.0
+
+[sub_resource type="CircleShape2D" id="CS_head"]
+radius = 15.0
+
+[node name="Racer" type="Node2D"]
+script = ExtResource("1_car")
+max_wheel_speed = 66.0
+motor_strength = 28000.0
+max_torque = 1900000.0
+inertia_scale = 1.8
+fuel_max = 105.0
+fuel_idle_drain = 1.8
+fuel_throttle_drain = 5.0
+
+[node name="Effects" type="Node2D" parent="."]
+top_level = true
+script = ExtResource("4_effects")
+
+[node name="Chassis" type="RigidBody2D" parent="."]
+collision_layer = 1
+collision_mask = 3
+mass = 105.0
+physics_material_override = SubResource("PM_body")
+continuous_cd = 2
+can_sleep = false
+
+[node name="Body" type="CollisionShape2D" parent="Chassis"]
+shape = SubResource("CS_body")
+
+[node name="BodyVisual" type="Polygon2D" parent="Chassis"]
+color = Color(0.20, 0.42, 0.86, 1)
+polygon = PackedVector2Array(-78, 4, -78, -10, -50, -20, 58, -20, 86, -8, 88, 4)
+
+; 座舱盖：低矮的一条，让车看着是趴在地上的。
+[node name="Canopy" type="Polygon2D" parent="Chassis"]
+color = Color(0.30, 0.56, 0.96, 1)
+polygon = PackedVector2Array(-34, -20, -18, -34, 26, -34, 42, -20)
+
+[node name="Window" type="Polygon2D" parent="Chassis"]
+color = Color(0.60, 0.82, 0.93, 1)
+polygon = PackedVector2Array(-26, -22, -14, -31, 22, -31, 34, -22)
+
+; 尾翼。纯装饰，但一眼能分出赛车和越野车。
+; **不超出车架碰撞多边形**（左端 -78）：卡片预览是按「车架 + 轮子」的包围盒缩放的，
+; 画到盒外的东西会被缩到预览框外，而 `_draw` 的越界不报错，只是画出去。
+[node name="Wing" type="Polygon2D" parent="Chassis"]
+color = Color(0.13, 0.14, 0.18, 1)
+polygon = PackedVector2Array(-78, -20, -54, -20, -52, -14, -76, -14)
+
+[node name="Driver" type="Node2D" parent="Chassis"]
+position = Vector2(4, -28)
+script = ExtResource("3_driver")
+
+; 车手头顶，正好在 Driver 上面 36 px（driver_visual.gd 的 HEAD_CENTER）。
+[node name="Head" type="Area2D" parent="Chassis"]
+position = Vector2(4, -64)
+collision_layer = 0
+collision_mask = 2
+
+[node name="HeadShape" type="CollisionShape2D" parent="Chassis/Head"]
+shape = SubResource("CS_head")
+
+[node name="RearWheel" type="RigidBody2D" parent="." groups=["wheel"]]
+position = Vector2(-58, 17)
+collision_layer = 1
+collision_mask = 3
+mass = 18.0
+physics_material_override = SubResource("PM_wheel")
+continuous_cd = 2
+contact_monitor = true
+max_contacts_reported = 4
+can_sleep = false
+
+[node name="Shape" type="CollisionShape2D" parent="RearWheel"]
+shape = SubResource("CS_wheel")
+
+[node name="Visual" type="Node2D" parent="RearWheel"]
+script = ExtResource("2_wheel")
+radius = 19.0
+rim_color = Color(0.92, 0.80, 0.35, 1)
+
+[node name="FrontWheel" type="RigidBody2D" parent="." groups=["wheel"]]
+position = Vector2(66, 17)
+collision_layer = 1
+collision_mask = 3
+mass = 18.0
+physics_material_override = SubResource("PM_wheel")
+continuous_cd = 2
+contact_monitor = true
+max_contacts_reported = 4
+can_sleep = false
+
+[node name="Shape" type="CollisionShape2D" parent="FrontWheel"]
+shape = SubResource("CS_wheel")
+
+[node name="Visual" type="Node2D" parent="FrontWheel"]
+script = ExtResource("2_wheel")
+radius = 19.0
+rim_color = Color(0.92, 0.80, 0.35, 1)
+
+[node name="RearJoint" type="PinJoint2D" parent="."]
+position = Vector2(-58, 17)
+node_a = NodePath("../Chassis")
+node_b = NodePath("../RearWheel")
+
+[node name="FrontJoint" type="PinJoint2D" parent="."]
+position = Vector2(66, 17)
+node_a = NodePath("../Chassis")
+node_b = NodePath("../FrontWheel")
