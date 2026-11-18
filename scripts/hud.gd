@@ -425,7 +425,7 @@ func _draw_item_flash() -> void:
 	var at := Vector2(30.0 + COL, 314.0 - rise)
 	var color: Color = it["color"]
 	color.a = fade
-	draw_string(_font, at, "▸ " + _t(str(it["zh"]), str(it["en"])),
+	draw_string(_font, at, "▶ " + _t(str(it["zh"]), str(it["en"])),
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 32, color)
 
 

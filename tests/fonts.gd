@@ -17,6 +17,10 @@ const FONT_SOURCE := "res://scripts/ui_fonts.gd"
 ## 界面上真会画出来的字。中文字体得是**这些字都有**，不只是碰巧有个「中」。
 const USED_GLYPHS := "金币解锁车图隧道雪地火山森林平原距离米升级商店成就"
 
+## 界面上当图标画的符号。**网页版没有系统字体**，`▶` / `◆` / `★` / 箭头这些
+## 全靠随包内置的子集字体，缺一个就是一个方块。
+const USED_SYMBOLS := "▶◆★←→↑↓✓×·…"
+
 var _failures := 0
 
 
@@ -32,6 +36,9 @@ func _ready() -> void:
 	print("")
 	print("=== 真找一个 ===")
 	_test_find()
+	print("")
+	print("=== 内置字体（网页版兜底） ===")
+	_test_bundled()
 	print("")
 	print("=== 界面接线 ===")
 	_test_wiring()
@@ -139,6 +146,34 @@ func _test_find() -> void:
 			if font != null else "没找到字体")
 
 
+func _test_bundled() -> void:
+	var path := UiFonts.BUNDLED_FONT_PATH
+	_check("内置字体路径是 res:// 里的资源",
+			path.begins_with("res://") and path.get_extension() == "ttf", path)
+	_check("内置字体资源随项目存在（导出后会进 pck）",
+			ResourceLoader.exists(path),
+			"ResourceLoader.exists(%s) = %s" % [path, ResourceLoader.exists(path)])
+
+	# 网页版没有系统字体，字体只可能是这一档；它必须真能写中文、真有图标字形。
+	var font := UiFonts.bundled_cjk_font()
+	_check("内置字体能加载、且真有汉字", font != null and UiFonts.has_cjk(font),
+			_identity(font) if font != null else "加载失败（网页版会退回英文）")
+	_check("内置字体有界面用到的每个汉字",
+			font != null and _have_glyphs(font),
+			"「%s」缺 %d 个字" % [USED_GLYPHS, _missing_glyphs(font).size()]
+			if font != null else "没字体")
+	var miss_sym := PackedStringArray()
+	if font != null:
+		miss_sym = _missing_symbols(font)
+	_check("内置字体有界面当图标用的符号",
+			font != null and miss_sym.is_empty(),
+			"「%s」缺 %d 个符号" % [USED_SYMBOLS, miss_sym.size()]
+			if font != null else "没字体")
+	_check("内置字体不依赖绝对路径（浏览器里没有文件系统）",
+			path.begins_with("res://") and not path.contains("C:/") and not path.begins_with("/"),
+			"res:// 相对资源路径")
+
+
 func _test_wiring() -> void:
 	var files := _scan(SCRIPTS_DIR)
 	_check("列得出脚本目录", files.size() > 0,
@@ -207,6 +242,15 @@ func _missing_glyphs(font: Font) -> PackedStringArray:
 	var out := PackedStringArray()
 	for i in range(USED_GLYPHS.length()):
 		var c := USED_GLYPHS[i]
+		if not font.has_char(c.unicode_at(0)):
+			out.append(c)
+	return out
+
+
+func _missing_symbols(font: Font) -> PackedStringArray:
+	var out := PackedStringArray()
+	for i in range(USED_SYMBOLS.length()):
+		var c := USED_SYMBOLS[i]
 		if not font.has_char(c.unicode_at(0)):
 			out.append(c)
 	return out

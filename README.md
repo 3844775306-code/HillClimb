@@ -343,8 +343,12 @@ scripts/
   night.gd       黑夜图的挡布：车灯光池 + 车灯锥 + 车头两颗灯珠（全屏 `draw_polygon`，没有着色器）
   save_data.gd   存档单例（autoload）：各图记录 + 金币 + **各车各自的**改装等级 + 选中的车/图 + 买了哪几张图哪几辆车
   background.gd  三层视差远山 + 白云
-  ui_fonts.gd    运行时加载系统中文字体（找不到就全程退回英文，见「手机版」）
+  ui_fonts.gd    中文字体查找：系统 → 随包内置子集 → 文件路径（见「中文文案」）
   touch_controls.gd  手机操作层：两个踏板 + 暂停键 + 暂停菜单（**只在手机上出现**）
+fonts/
+  NotoSansSC-Game.ttf  内置中文字体子集（Noto Sans SC，SIL OFL 1.1）：**网页版唯一的中文字体来源**
+  OFL.txt              上面那个字体的 SIL Open Font License 全文
+  chars.txt            切子集用的字表（GB2312 全集 + 界面用到的标点/符号 + 拉丁字母）
 tests/
   sim.gd         无头物理冒烟测试
   shot.gd        自动截图
@@ -673,7 +677,7 @@ GODOT="D:/Downloads/Godot_v4.7.2-stable_win64.exe/Godot_v4.7.2-stable_win64.exe"
 手机上那一格是**唯一的**车灯开关 —— 没有键盘可按。它和油条是并排的一行，
 坐标是**从 `fuel_rect()` 推出来的**，油条挪了它跟着挪。
 
-### 中文文案在安卓上（`scripts/ui_fonts.gd`）
+### 中文文案在安卓 / 网页上（`scripts/ui_fonts.gd`）
 
 **手机上「文字全为英文」不是翻译漏了,是字体没找到。**
 
@@ -684,23 +688,38 @@ Godot 内置的默认字体只带拉丁字形（`ThemeDB.fallback_font` 对「�
 `_t(zh, en)` 全程返回英文那一份。所有界面文案都是这么写的（`_t()` 的英文分支本来是
 给「字体缺失」兜底的，结果在手机上成了常态）。
 
-现在分两段找，**顺序就是优先级**：
+现在分三段找，**顺序就是优先级**：
 
-1. **问系统要**（`SystemFont` + 家族名列表，`allow_system_fallback = true`）。这是跨平台
-   的正路：安卓上它查的是系统字体库，比硬编码路径可靠，也不用把几十兆字体塞进包里。
-   名单里 `Droid Sans Fallback` 是老安卓上唯一带汉字的那个，`Noto Sans CJK SC` 是现在
-   的通名。
-2. 挑不出来才逐个试文件路径（`CJK_CANDIDATES`，安卓那几条是给「不认家族名的老机器」
+1. **问系统要**（`SystemFont` + 家族名列表，`allow_system_fallback = true`）。桌面和安卓
+   上这是正路：它查的是系统字体库，比硬编码路径可靠，也不用把字体塞进包里。名单里
+   `Droid Sans Fallback` 是老安卓上唯一带汉字的那个，`Noto Sans CJK SC` 是现在的通名。
+2. **随包内置的子集中文字体**（`fonts/NotoSansSC-Game.ttf`）。**网页版就是靠这一档**：
+   浏览器里没有系统字体可查，`C:/Windows/Fonts/...` 这种绝对路径也不存在，前两段全落空
+   —— 没有内置字体时网页版整屏退回英文，`▶`/`◆`/`★`/`←→` 这些图标字还会变成方块。
+   内置的是 Noto Sans SC 的**子集**：GB2312 全部汉字 + 界面用到的标点/箭头/几何符号 +
+   拉丁字母，约 2.1 MB（全量 Noto Sans SC 是 10.5 MB）；SIL OFL 1.1 许可，全文在
+   `fonts/OFL.txt`。
+3. 最后才逐个试文件路径（`CJK_CANDIDATES`，安卓那几条是给「不认家族名的老机器」
    兜底的）。
 
-两段都过一道 `has_cjk()`：**拿真字形验一次**。只看 `load_dynamic_font()` 返回 OK 是
+三段都过一道 `has_cjk()`：**拿真字形验一次**。只看 `load_dynamic_font()` 返回 OK 是
 不够的 —— 那个字体可能一个汉字都没有，画出来是**豆腐块**，比退回英文还难看，而且更
 难查（看着像编码问题）。
 
-**包里一个字体文件都没有**（`unzip -l HillClimbRacing.apk | grep -i ttf` 是空的，
-`CJK_CANDIDATES` 命中的全是系统路径），所以安卓上中文是**完全**押在系统字体那一半上
-的，没有任何兜底。真机上万一出豆腐块，唯一的补救是往 `CJK_CANDIDATES` 之外再塞一个
-字体进包（几十兆，换来的是确定性）。
+内置子集是 `pyftsubset` 切的：字表 `fonts/chars.txt` 里有 GB2312 全集、`scripts/` 和
+`tests/` 字符串字面量里用到的所有非 ASCII 字、以及界面当图标画的符号。**加了新的中文/
+符号文案之后要重切**，否则新字会缺字形；`tests/fonts.tscn` 会逐个核对界面用到的字形，
+缺了会红。重切命令（本机用的字体是 `C:\Windows\Fonts\Noto Sans SC.ttf`，版本 2.004-H2）：
+
+```bash
+python -m fontTools.subset "C:\Windows\Fonts\Noto Sans SC.ttf" \
+  --text-file=fonts/chars.txt --output-file=fonts/NotoSansSC-Game.ttf \
+  --name-IDs='*' --name-legacy --name-languages='*' --glyph-names \
+  --notdef-glyph --recommended-glyphs --no-hinting
+```
+
+> HUD 的道具项目符号用 `▶`（U+25B6）而不是 `▸`（U+25B8）：Noto Sans SC 里没有 U+25B8，
+> 换字体/重切子集时注意别把 `▶` 又改回去。
 
 `tests/fonts.tscn` 怎么测的，和为什么在无头环境里也能测：
 
@@ -709,6 +728,10 @@ Godot 内置的默认字体只带拉丁字形（`ThemeDB.fallback_font` 对「�
   里用到的所有字。
 - **不假设系统名能不能对上**：`SystemFont` 那段测的是「名单里有没有中文家族名」「兜底
   开着没有」，换一台没装字体的机器也是这几条。
+- **内置字体这一档单独测**：`ResourceLoader.exists` 确认它真在包里、`bundled_cjk_font()`
+  真有汉字、`USED_GLYPHS`（界面用到的汉字）和 `USED_SYMBOLS`（`▶◆★←→↑↓✓×·…`）一个
+  不缺、路径不是绝对路径。**网页版只有这一档**，这几条就是网页版能不能说中文、图标会
+  不会成方块的依据。
 - **结构检查**（自己维护自己）：除了 `ui_fonts.gd`，任何 `.gd` 都不许出现 `.ttc`/`.ttf`/
   `.otf`（字体路径表只有一份），任何有 `_cjk` 的文件都必须有 `func _t(zh, en)`。加一屏
   忘了接字体，这条会红。
@@ -740,12 +763,10 @@ textures/vram_compression/import_etc2_astc=true   # 不加这条导出会被直�
   都是空的（2026-10 查过一次，仍然是空的）。`tests/mobile` 用合成触摸事件把
   「踏板 → 动作 → 车真的往前开」这条路走通了（含一次端到端：按住油门 3 秒车前进
   1491 px），但触屏手感、性能这些只有真机说了算。
-- **中文那一段的安卓分支同样没法在这台机器上验证**（上一节）。能验的是「本机
-  `file_cjk_font()` 真找得到字体、那个字体真有界面用到的每个字、`_t()` 的接线没漏」；
-  **验不了的是「安卓上 `SystemFont` 到底挑不挑得出来」** —— 那段代码的正确性目前只有
-  家族名和 `allow_system_fallback` 这两条静态断言撑着。真机上装一次看选图页是不是
-  中文，是唯一能确认的办法；万一是豆腐块，说明得关掉 `allow_system_fallback` 或者
-  往包里塞一个字体。
+- **安卓上的字体仍然没法在这台机器上验证**（没有真机/模拟器）：`SystemFont` 到底挑不
+  挑得出来只有静态断言撑着。不过现在**内置子集字体是兜底**，就算系统挑不出来，中文和
+  图标字形也有保障。**网页版已经用无头浏览器实测过**：中文界面正常、图标不再是方块。
+  安卓上剩下没验的只是排版（中文断行/字号）和手感。
 
 ## 验证
 
