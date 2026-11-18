@@ -13,6 +13,23 @@
 
 或用 Godot 编辑器打开本目录，直接 F5 运行 `scenes/main.tscn`。
 
+### 网页版（GitHub Pages）
+
+在线试玩：<https://3844775306-code.github.io/HillClimb/>
+
+构建产物放在 `docs/`，由 `export_presets.cfg` 里的 `Web` 预设导出（Godot 4.7.2）：
+
+```bash
+# 控制台版 Godot，首次或改了资源后先 --import
+".../Godot_v4.7.2-stable_win64_console.exe" --headless --path . --import
+".../Godot_v4.7.2-stable_win64_console.exe" --headless --path . --export-release "Web" "docs/index.html"
+```
+
+GitHub Pages 配置为 `main` 分支的 `/docs` 目录；`docs/.nojekyll` 关闭 Jekyll 处理。
+Web 预设使用**非多线程**模板（`variant/thread_support=false`），因为 Pages 无法发
+COOP/COEP 头；渲染方法由 `renderer/rendering_method.web="gl_compatibility"` 指定
+（Web 只支持 Compatibility / WebGL 2，Forward+ 不可用）。
+
 ## 操作
 
 开车时：
